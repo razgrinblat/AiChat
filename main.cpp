@@ -10,7 +10,7 @@ int main()
     int db_status = Database::createDataBase(db_name);
     if (db_status != SQLITE_OK) 
     {
-        std::cerr << "Failed to create the database. Exiting..." << std::endl;
+        std::cout << "Failed to create the database. Exiting..." << std::endl;
         return db_status;
     }
 

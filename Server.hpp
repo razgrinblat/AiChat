@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Database.hpp"
+#include "Room.hpp"
 #include <boost/asio.hpp>
 #include <unordered_map>
 #include <memory>
@@ -24,7 +25,10 @@ private:
     boost::asio::ip::tcp::acceptor _acceptor;
     boost::asio::ip::tcp::socket _socket;
     std::unordered_map<int, std::shared_ptr<boost::asio::ip::tcp::socket>> _clients;
-    
+
+    std::unordered_map<std::string, Room> _rooms;
+
+    std::unordered_map<int, std::string> _client_to_room;
 
     //Send the client request to the AI API by a HTTP request
     std::string sendRequestToAI(const std::string& prompt);
@@ -37,6 +41,14 @@ private:
 
     //handle the Sign Up or Login message
     void handleClientConnection(const std::string& message, std::shared_ptr<boost::asio::ip::tcp::socket> socket);
+
+    void redingRoomConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socket);
+
+    void handleRoomConnection(const std::string& message, std::shared_ptr<boost::asio::ip::tcp::socket> socket);
+
+    void broadcastToRoom(const std::string& message, const std::string& room_key, int socketfd);
+
+    void handleClientDisconnect(std::shared_ptr<boost::asio::ip::tcp::socket> socket);
 
     // Start reading data from a specific client socket
     void startReading(std::shared_ptr<boost::asio::ip::tcp::socket> socket);

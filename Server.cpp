@@ -62,6 +62,7 @@ Server::~Server()
         }
     }
     _clients.clear();
+
 }
 
 void Server::acceptConnections()
@@ -73,6 +74,7 @@ void Server::acceptConnections()
             int socket_fd = new_socketptr->native_handle();
             _clients[socket_fd] = new_socketptr;
             readingInitConnection(new_socketptr); //reading login or sign in message
+            redingRoomConnection(new_socketptr); //reding create or join message
             startReading(new_socketptr);
             acceptConnections();
         }
@@ -143,6 +145,75 @@ void Server::handleClientConnection(const std::string& message, std::shared_ptr<
     }
 }
 
+void Server::redingRoomConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+{
+    std::vector<char> buffer(REQUEST_BUFFER_SIZE);
+    boost::system::error_code error;
+    // Perform synchronous receive operation
+    size_t bytes = socket->read_some(boost::asio::buffer(buffer), error);
+    if (error) {
+        throw std::runtime_error("Error receiving data: " + error.message());
+    }
+    // Convert the received data to a string and process it
+    std::string message(buffer.data(), bytes);
+    handleRoomConnection(message, socket);
+}
+
+void Server::handleRoomConnection(const std::string& message, std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+{
+    std::stringstream ss(message);
+    std::string action, room_key, response;
+
+    std::getline(ss, action, ':');
+    std::getline(ss, room_key, ':');
+    
+    if (action == "create")
+    {
+        if (_rooms.find(room_key) == _rooms.end())
+        {
+            _rooms[room_key] = Room(room_key);
+        }
+        else
+        {
+            response = '0'; //this key is in use
+            boost::asio::write(*socket, boost::asio::buffer(response));
+            redingRoomConnection(socket);
+        }
+    }
+    else if (action == "join")
+    {
+        if (_rooms.find(room_key) == _rooms.end())
+        {
+            response = '1'; //key is not exist
+            boost::asio::write(*socket, boost::asio::buffer(response));
+            redingRoomConnection(socket);
+        }
+        else
+        {
+            _rooms[room_key].addClient(socket);
+            _client_to_room[socket->native_handle()] = room_key;
+        }
+    }
+}
+
+void Server::broadcastToRoom(const std::string& message, const std::string& room_key,int socketfd)
+{
+    auto socketptr = _clients[socketfd];
+    _rooms[room_key].broadcast(message, socketptr);
+}
+
+void Server::handleClientDisconnect(std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+{
+    int socketfd = socket->native_handle();
+
+    std::string room_key = _client_to_room[socketfd];
+    _rooms[room_key].removeClient(socket);
+    _client_to_room.erase(socketfd);
+    _clients.erase(socketfd);
+    socket->close();
+    std::cout << socketfd << " Is disconnected\n";
+}
+
 void Server::startReading(std::shared_ptr<boost::asio::ip::tcp::socket> socket)
 {
     auto buffer = std::make_shared<std::vector<char>>(REQUEST_BUFFER_SIZE);
@@ -153,10 +224,7 @@ void Server::startReading(std::shared_ptr<boost::asio::ip::tcp::socket> socket)
                 handleReadCallBack(error, bytes, socket, buffer);
             }
             else {
-                int socket_fd = socket->native_handle();
-                _clients.erase(socket_fd);
-                socket->close();
-                std::cout << socket_fd << " is Disconnected from the chat\n";
+                handleClientDisconnect(socket);
             }
         });
 }
@@ -170,10 +238,15 @@ void Server::handleReadCallBack(const boost::system::error_code& error, std::siz
         {
             readingInitConnection(socket);
         }
-        else
+        else if(message == "$room$")
         {
+            redingRoomConnection(socket);
+        }
+        else if (message[0] == '!')
+        {
+            
             // Send the client's message to the AI and get the response
-            std::string ai_response = sendRequestToAI(message);
+            std::string ai_response = sendRequestToAI(message.substr(1));
             auto message_ptr = std::make_shared<std::string>(ai_response);
 
             // Send the AI response back to the same client
@@ -181,6 +254,13 @@ void Server::handleReadCallBack(const boost::system::error_code& error, std::siz
                 {
                     handleWriteCallBack(error);
                 });
+        }
+        else
+        {
+            uint32_t socketfd = socket->native_handle();
+            std::string room_key = _client_to_room[socketfd]; //find the room the client is in
+            broadcastToRoom(message, room_key, socketfd);
+
         }
         startReading(socket);
     }
