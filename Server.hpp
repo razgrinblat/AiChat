@@ -24,11 +24,17 @@ private:
     static constexpr auto REQUEST_BUFFER_SIZE = 1024;
     boost::asio::ip::tcp::acceptor _acceptor;
     boost::asio::ip::tcp::socket _socket;
-    std::unordered_map<int, std::shared_ptr<boost::asio::ip::tcp::socket>> _clients;
+    struct Client
+    {
+        std::string username;
+        std::shared_ptr<boost::asio::ip::tcp::socket> socket;
+    };
 
+    std::unordered_map<uint32_t, Client> _clients;
+    
     std::unordered_map<std::string, Room> _rooms;
 
-    std::unordered_map<int, std::string> _client_to_room;
+    std::unordered_map<uint32_t, std::string> _client_to_room;
 
     //Send the client request to the AI API by a HTTP request
     std::string sendRequestToAI(const std::string& prompt);
@@ -56,8 +62,10 @@ private:
     // Handle the callback when data is read from a client socket
     void handleReadCallBack(const boost::system::error_code& error, std::size_t bytes, uint32_t socketfd, std::shared_ptr<std::vector<char>> buffer);
 
+    void disconnectFromRoom(uint32_t socketfd);
+
     // Handle the callback when data is written to a client socket
-    void handleWriteCallBack(const boost::system::error_code& error);
+    void broadcastAiResponse(const std::string& message, uint32_t socketfd);
 public:
 
     Server(boost::asio::io_service& io_service);
