@@ -73,10 +73,10 @@ void Server::acceptConnections()
             std::cout << "New connection accepted.\n";
             int socket_fd = new_socketptr->native_handle();
             _clients[socket_fd] = new_socketptr;
-            readingInitConnection(new_socketptr); //reading login or sign in message
-            redingRoomConnection(new_socketptr); //reding create or join message
-            startReading(new_socketptr);
             acceptConnections();
+            readingInitConnection(new_socketptr); //reading login or sign in message
+            //redingRoomConnection(new_socketptr); //reding create or join message
+            startReading(new_socketptr);
         }
         else {
             throw std::runtime_error("Error accepting connection: " + error.message());
@@ -97,6 +97,7 @@ void Server::readingInitConnection(std::shared_ptr<boost::asio::ip::tcp::socket>
     // Convert the received data to a string and process it
     std::string message(buffer.data(), bytes);
     handleClientConnection(message, socket);
+    redingRoomConnection(socket); //reding create or join message
 }
 
 
@@ -117,7 +118,7 @@ void Server::handleClientConnection(const std::string& message, std::shared_ptr<
         if (db.validateUser(username, password))
         {
             std::cout << username << " Sign In successfully." << std::endl;
-            response = "1";
+            response = "1"; //login successfully
             boost::asio::write(*socket, boost::asio::buffer(response));
         }
         else
@@ -132,7 +133,7 @@ void Server::handleClientConnection(const std::string& message, std::shared_ptr<
         if (db.addNewUser(username, password))
         {
             std::cout << "User created: " << username << std::endl;
-            response = "1";
+            response = "1";//signUp successfully
             boost::asio::write(*socket, boost::asio::buffer(response));
         }
         else
@@ -172,6 +173,11 @@ void Server::handleRoomConnection(const std::string& message, std::shared_ptr<bo
         if (_rooms.find(room_key) == _rooms.end())
         {
             _rooms[room_key] = Room(room_key);
+            _rooms[room_key].addClient(socket);
+            _client_to_room[socket->native_handle()] = room_key;
+            response = '1'; //join succesfully
+            boost::asio::write(*socket, boost::asio::buffer(response));
+            std::cout << room_key << " Is Created\n";
         }
         else
         {
@@ -184,7 +190,7 @@ void Server::handleRoomConnection(const std::string& message, std::shared_ptr<bo
     {
         if (_rooms.find(room_key) == _rooms.end())
         {
-            response = '1'; //key is not exist
+            response = '0'; //key is not exist
             boost::asio::write(*socket, boost::asio::buffer(response));
             redingRoomConnection(socket);
         }
@@ -192,6 +198,8 @@ void Server::handleRoomConnection(const std::string& message, std::shared_ptr<bo
         {
             _rooms[room_key].addClient(socket);
             _client_to_room[socket->native_handle()] = room_key;
+            response = '1'; //join succesfully
+            boost::asio::write(*socket, boost::asio::buffer(response));
         }
     }
 }
