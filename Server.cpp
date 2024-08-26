@@ -71,12 +71,12 @@ void Server::acceptConnections()
     _acceptor.async_accept(*new_socketptr, [this, new_socketptr](const boost::system::error_code& error) {
         if (!error) {
             std::cout << "New connection accepted.\n";
-            int socket_fd = new_socketptr->native_handle();
+            uint32_t socket_fd = new_socketptr->native_handle();
             _clients[socket_fd] = new_socketptr;
             acceptConnections();
-            readingInitConnection(new_socketptr); //reading login or sign in message
+            readingInitConnection(socket_fd); //reading login or sign in message
             //redingRoomConnection(new_socketptr); //reding create or join message
-            startReading(new_socketptr);
+            startReading(socket_fd);
         }
         else {
             throw std::runtime_error("Error accepting connection: " + error.message());
@@ -84,25 +84,27 @@ void Server::acceptConnections()
         });
 }
 
-void Server::readingInitConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+void Server::readingInitConnection(uint32_t socketfd)
 {
+    auto socketptr = _clients[socketfd];
     std::vector<char> buffer(REQUEST_BUFFER_SIZE);
     boost::system::error_code error;
     // Perform synchronous receive operation
-    size_t bytes = socket->read_some(boost::asio::buffer(buffer), error);
+    size_t bytes = socketptr->read_some(boost::asio::buffer(buffer), error);
 
     if (error) {
         throw std::runtime_error("Error receiving data: " + error.message());
     }
     // Convert the received data to a string and process it
     std::string message(buffer.data(), bytes);
-    handleClientConnection(message, socket);
-    redingRoomConnection(socket); //reding create or join message
+    handleClientConnection(message, socketfd);
+    redingRoomConnection(socketfd); //reding create or join message
 }
 
 
-void Server::handleClientConnection(const std::string& message, std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+void Server::handleClientConnection(const std::string& message, uint32_t socketfd)
 {
+    auto socketptr = _clients[socketfd];
     std::stringstream ss(message);
     std::string response;
     std::string action, username, password;
@@ -119,13 +121,13 @@ void Server::handleClientConnection(const std::string& message, std::shared_ptr<
         {
             std::cout << username << " Sign In successfully." << std::endl;
             response = "1"; //login successfully
-            boost::asio::write(*socket, boost::asio::buffer(response));
+            boost::asio::write(*socketptr, boost::asio::buffer(response));
         }
         else
         {   
             response = "0"; //password or username is not correct
-            boost::asio::write(*socket, boost::asio::buffer(response));
-            readingInitConnection(socket);
+            boost::asio::write(*socketptr, boost::asio::buffer(response));
+            readingInitConnection(socketfd);
         }
     }
     else if (action == "signup")
@@ -134,34 +136,36 @@ void Server::handleClientConnection(const std::string& message, std::shared_ptr<
         {
             std::cout << "User created: " << username << std::endl;
             response = "1";//signUp successfully
-            boost::asio::write(*socket, boost::asio::buffer(response));
+            boost::asio::write(*socketptr, boost::asio::buffer(response));
         }
         else
         {
             response = "2"; //username is already exists
-            boost::asio::write(*socket, boost::asio::buffer(response));
-            readingInitConnection(socket);
+            boost::asio::write(*socketptr, boost::asio::buffer(response));
+            readingInitConnection(socketfd);
         }
         
     }
 }
 
-void Server::redingRoomConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+void Server::redingRoomConnection(uint32_t socketfd)
 {
+    auto socketptr = _clients[socketfd];
     std::vector<char> buffer(REQUEST_BUFFER_SIZE);
     boost::system::error_code error;
     // Perform synchronous receive operation
-    size_t bytes = socket->read_some(boost::asio::buffer(buffer), error);
+    size_t bytes = socketptr->read_some(boost::asio::buffer(buffer), error);
     if (error) {
         throw std::runtime_error("Error receiving data: " + error.message());
     }
     // Convert the received data to a string and process it
     std::string message(buffer.data(), bytes);
-    handleRoomConnection(message, socket);
+    handleRoomConnection(message, socketfd);
 }
 
-void Server::handleRoomConnection(const std::string& message, std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+void Server::handleRoomConnection(const std::string& message, uint32_t socketfd)
 {
+    auto socketptr = _clients[socketfd];
     std::stringstream ss(message);
     std::string action, room_key, response;
 
@@ -173,17 +177,17 @@ void Server::handleRoomConnection(const std::string& message, std::shared_ptr<bo
         if (_rooms.find(room_key) == _rooms.end())
         {
             _rooms[room_key] = Room(room_key);
-            _rooms[room_key].addClient(socket);
-            _client_to_room[socket->native_handle()] = room_key;
+            _rooms[room_key].addClient(socketptr);
+            _client_to_room[socketptr->native_handle()] = room_key;
             response = '1'; //join succesfully
-            boost::asio::write(*socket, boost::asio::buffer(response));
+            boost::asio::write(*socketptr, boost::asio::buffer(response));
             std::cout << room_key << " Is Created\n";
         }
         else
         {
             response = '0'; //this key is in use
-            boost::asio::write(*socket, boost::asio::buffer(response));
-            redingRoomConnection(socket);
+            boost::asio::write(*socketptr, boost::asio::buffer(response));
+            redingRoomConnection(socketfd);
         }
     }
     else if (action == "join")
@@ -191,64 +195,66 @@ void Server::handleRoomConnection(const std::string& message, std::shared_ptr<bo
         if (_rooms.find(room_key) == _rooms.end())
         {
             response = '0'; //key is not exist
-            boost::asio::write(*socket, boost::asio::buffer(response));
-            redingRoomConnection(socket);
+            boost::asio::write(*socketptr, boost::asio::buffer(response));
+            redingRoomConnection(socketfd);
         }
         else
         {
-            _rooms[room_key].addClient(socket);
-            _client_to_room[socket->native_handle()] = room_key;
+            _rooms[room_key].addClient(socketptr);
+            _client_to_room[socketptr->native_handle()] = room_key;
             response = '1'; //join succesfully
-            boost::asio::write(*socket, boost::asio::buffer(response));
+            boost::asio::write(*socketptr, boost::asio::buffer(response));
         }
     }
 }
 
-void Server::broadcastToRoom(const std::string& message, const std::string& room_key,int socketfd)
+void Server::broadcastToRoom(const std::string& message, const std::string& room_key,uint32_t socketfd)
 {
     auto socketptr = _clients[socketfd];
     _rooms[room_key].broadcast(message, socketptr);
 }
 
-void Server::handleClientDisconnect(std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+void Server::handleClientDisconnect(uint32_t socketfd)
 {
-    int socketfd = socket->native_handle();
+    auto socketptr = _clients[socketfd];
 
     std::string room_key = _client_to_room[socketfd];
-    _rooms[room_key].removeClient(socket);
+    _rooms[room_key].removeClient(socketptr);
     _client_to_room.erase(socketfd);
     _clients.erase(socketfd);
-    socket->close();
+    socketptr->close();
     std::cout << socketfd << " Is disconnected\n";
 }
 
-void Server::startReading(std::shared_ptr<boost::asio::ip::tcp::socket> socket)
+void Server::startReading(uint32_t socketfd)
 {
+    auto socketptr = _clients[socketfd];
     auto buffer = std::make_shared<std::vector<char>>(REQUEST_BUFFER_SIZE);
-    socket->async_receive(boost::asio::buffer(*buffer), [this, socket, buffer](const boost::system::error_code& error, size_t bytes)
+    socketptr->async_receive(boost::asio::buffer(*buffer), [this, socketfd, buffer](const boost::system::error_code& error, size_t bytes)
         {
             if (!error) 
             {
-                handleReadCallBack(error, bytes, socket, buffer);
+                handleReadCallBack(error, bytes, socketfd, buffer);
             }
             else {
-                handleClientDisconnect(socket);
+                handleClientDisconnect(socketfd);
             }
         });
 }
 
-void Server::handleReadCallBack(const boost::system::error_code& error, std::size_t bytes, std::shared_ptr<boost::asio::ip::tcp::socket> socket, std::shared_ptr<std::vector<char>> buffer)
+void Server::handleReadCallBack(const boost::system::error_code& error, std::size_t bytes, uint32_t socketfd, std::shared_ptr<std::vector<char>> buffer)
 {
+    auto socketptr = _clients[socketfd];
     if (!error) {
         std::string message(buffer->data(), bytes);
 
         if (message == "$home$")
         {
-            readingInitConnection(socket);
+            readingInitConnection(socketfd);
         }
         else if(message == "$room$")
         {
-            redingRoomConnection(socket);
+            redingRoomConnection(socketfd);
         }
         else if (message[0] == '!')
         {
@@ -258,19 +264,19 @@ void Server::handleReadCallBack(const boost::system::error_code& error, std::siz
             auto message_ptr = std::make_shared<std::string>(ai_response);
 
             // Send the AI response back to the same client
-            boost::asio::async_write(*socket, boost::asio::buffer(*message_ptr), [this, message_ptr](const boost::system::error_code& error, size_t bytes)
+            boost::asio::async_write(*socketptr, boost::asio::buffer(*message_ptr), [this, message_ptr](const boost::system::error_code& error, size_t bytes)
                 {
                     handleWriteCallBack(error);
                 });
         }
         else
         {
-            uint32_t socketfd = socket->native_handle();
+            uint32_t socketfd = socketptr->native_handle();
             std::string room_key = _client_to_room[socketfd]; //find the room the client is in
             broadcastToRoom(message, room_key, socketfd);
 
         }
-        startReading(socket);
+        startReading(socketfd);
     }
     else {
         throw std::runtime_error("Error in reading: " + error.message());

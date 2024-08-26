@@ -37,24 +37,24 @@ private:
     void acceptConnections();
 
     //gets Sign Up or Login message from the client
-    void readingInitConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socket);
+    void readingInitConnection(uint32_t socketfd);
 
     //handle the Sign Up or Login message
-    void handleClientConnection(const std::string& message, std::shared_ptr<boost::asio::ip::tcp::socket> socket);
+    void handleClientConnection(const std::string& message, uint32_t socketfd);
 
-    void redingRoomConnection(std::shared_ptr<boost::asio::ip::tcp::socket> socket);
+    void redingRoomConnection(uint32_t socketfd);
 
-    void handleRoomConnection(const std::string& message, std::shared_ptr<boost::asio::ip::tcp::socket> socket);
+    void handleRoomConnection(const std::string& message, uint32_t socketfd);
 
-    void broadcastToRoom(const std::string& message, const std::string& room_key, int socketfd);
+    void broadcastToRoom(const std::string& message, const std::string& room_key, uint32_t socketfd);
 
-    void handleClientDisconnect(std::shared_ptr<boost::asio::ip::tcp::socket> socket);
+    void handleClientDisconnect(uint32_t socketfd);
 
     // Start reading data from a specific client socket
-    void startReading(std::shared_ptr<boost::asio::ip::tcp::socket> socket);
+    void startReading(uint32_t socketfd);
 
     // Handle the callback when data is read from a client socket
-    void handleReadCallBack(const boost::system::error_code& error, std::size_t bytes, std::shared_ptr<boost::asio::ip::tcp::socket> socket, std::shared_ptr<std::vector<char>> buffer);
+    void handleReadCallBack(const boost::system::error_code& error, std::size_t bytes, uint32_t socketfd, std::shared_ptr<std::vector<char>> buffer);
 
     // Handle the callback when data is written to a client socket
     void handleWriteCallBack(const boost::system::error_code& error);
